@@ -26,7 +26,7 @@ void Aim(GameSession s, Rock r, int power)
 var ready = new GameSession(1);
 ready.Tick(0, new(600, Start: true)); Advance(ready, 10);
 Check(ready.Phase == GamePhase.Ready && ready.Elapsed == 0 && ready.Oxygen == 100, "Ready freezes oxygen and time");
-Check(ready.Rocks.Count == 112 && ready.Rocks.Where(r => r.Row == 0).All(r => r.Health > 0), "Field and escape row");
+Check(ready.Rocks.Count == 144 && ready.Rocks.Where(r => r.Row == 0).All(r => r.Health > 0), "18x8 field and escape row");
 var normal = Playing();
 Check(normal.Ball.Power == 1 && normal.Oxygen == 99 && normal.Ball.Velocity.Y < 0, "Normal launch");
 var strong = Playing(true);
@@ -64,18 +64,45 @@ Check(win.Phase == GamePhase.Result && win.Won && win.Score > 1900 && win.Best =
 int best = win.Best; float time = win.Elapsed; Advance(win, 2);
 Check(win.Elapsed == time && win.Score == best, "Result freezes run and bonus is awarded once");
 win.Tick(0, new(600, Restart: true)); win.Tick(0, new(600, Start: true));
-Check(win.Phase == GamePhase.Ready && win.Oxygen == 100 && win.Score == 0 && win.Elapsed == 0 && win.Best == best && win.Rocks.Count == 112, "Restart resets run but retains session best");
+Check(win.Phase == GamePhase.Ready && win.Oxygen == 100 && win.Score == 0 && win.Elapsed == 0 && win.Best == best && win.Rocks.Count == 144, "Restart resets run but retains session best");
 var loss = Playing(); loss.Rocks.Clear(); Advance(loss, 401);
 Check(loss.Phase == GamePhase.Result && !loss.Won && loss.Oxygen == 0, "Natural oxygen exhaustion loses");
 var spam = Playing(); spam.Ball.Position = new(30, 400);
 for (int i = 0; i < 100; i++) spam.Tick(0, new(600, Swing: true));
 Check(spam.Phase == GamePhase.Result && !spam.Won, "Swing exhaustion ends immediately");
 var edges = Playing(); edges.Rocks.Clear();
-edges.Ball.Position = new(12, 500); edges.Ball.Velocity = new(-510, 0); Advance(edges, .05f);
+edges.Ball.Position = new(12, 700); edges.Ball.Velocity = new(-510, 0); Advance(edges, .05f);
 Check(edges.Ball.Position.X >= 11 && edges.Ball.Velocity.X > 0, "Left wall correction");
-edges.Ball.Position = new(1188, 500); edges.Ball.Velocity = new(510, 0); Advance(edges, .05f);
+edges.Ball.Position = new(1188, 700); edges.Ball.Velocity = new(510, 0); Advance(edges, .05f);
 Check(edges.Ball.Position.X <= 1189 && edges.Ball.Velocity.X < 0, "Right wall correction");
 Console.WriteLine($"{passed} rule checks passed.");
+
+foreach (float x in new[] { Rules.Radius, Rules.Width - Rules.Radius })
+{
+    var blocked = Playing(true);
+    blocked.Ball.Power = 0;
+    blocked.Ball.Position = new(x, Rules.FieldBottom + Rules.Radius + 1);
+    blocked.Ball.Velocity = new(0, -Rules.Speed);
+    Advance(blocked, .05f);
+    Check(blocked.Ball.Velocity.Y > 0 && blocked.Ball.Position.Y > Rules.FieldBottom,
+        $"Edge rock at x={x} blocks an unpowered ball");
+    Check(blocked.Score == 0 && blocked.Phase == GamePhase.Play,
+        $"Edge path at x={x} cannot bypass intact rocks");
+}
+foreach (int column in new[] { 0, Rules.Columns - 1 })
+{
+    var edgeRockGame = Playing(); edgeRockGame.Rocks.Clear();
+    var edgeRock = new Rock { Row = 7, Column = column, Health = 1 };
+    edgeRockGame.Rocks.Add(edgeRock); Aim(edgeRockGame, edgeRock, 1); Advance(edgeRockGame, .05f);
+    Check(edgeRock.Health == 0 && edgeRockGame.Score == 20, "Edge rocks can be destroyed");
+    edgeRockGame.Ball.Position = new(column == 0 ? 30 : 1170, Rules.FieldBottom + 30);
+    edgeRockGame.Ball.Velocity = new(0, -Rules.Speed); Advance(edgeRockGame, .1f);
+    Check(edgeRockGame.Ball.Position.Y < Rules.FieldBottom, "No invisible side wall after edge rock destruction");
+}
+var entrance = Playing(); entrance.Rocks.Clear();
+entrance.Ball.Position = new(600, Rules.FieldBottom + Rules.Radius + 1);
+entrance.Ball.Velocity = new(0, -Rules.Speed); Advance(entrance, .1f);
+Check(entrance.Ball.Position.Y < Rules.FieldBottom && entrance.Ball.Velocity.Y < 0, "Bottom entrance remains open");
 
 // 실제 필드를 끝까지 진행: 곡괭이가 공을 따라가며 내려오는 공을 강타합니다.
 int wins = 0;

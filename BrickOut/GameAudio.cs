@@ -35,11 +35,8 @@ sealed class GameAudio : IDisposable
         get => muted;
         set
         {
-            muted = value; title?.Stop(); mine?.Stop();
-            foreach (Clip clip in effects.Values) clip.Stop();
-            foreach (var clip in recordings.Values) clip.Stop();
-            cave?.Stop();
-            phase = null;
+            muted = value;
+            Pause();
         }
     }
 
@@ -60,8 +57,7 @@ sealed class GameAudio : IDisposable
         }
         title = new Clip(Synthesize(8, t =>
         {
-            double[] notes = { 220, 261.63, 329.63, 293.66, 220, 196, 261.63, 164.81 };
-            double note = notes[(int)t % notes.Length];
+            double note = TitleNotes[(int)t % TitleNotes.Length];
             return Math.Sin(2 * Math.PI * note * t) * Math.Sin(Math.PI * (t % 1));
         }, 0, .035));
         mine = new Clip(Synthesize(8, t => Math.Sin(2 * Math.PI * 55 * t) * .7 +
@@ -120,6 +116,8 @@ sealed class GameAudio : IDisposable
         }
         return data;
     }
+
+    private static readonly double[] TitleNotes = { 220, 261.63, 329.63, 293.66, 220, 196, 261.63, 164.81 };
 
     public void Dispose()
     {

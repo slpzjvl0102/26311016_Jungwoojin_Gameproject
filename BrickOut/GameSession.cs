@@ -8,43 +8,6 @@ public enum SoundCue { Swing, StrongSwing, Mode, Break, Bounce, Oxygen, Breath, 
 public readonly record struct GameInput(float MouseX, bool Start = false, bool Swing = false,
     bool TogglePower = false, bool Restart = false);
 
-public static class Rules
-{
-    public const float Width = 1200, Height = 900, PaddleY = 750, Floor = 804;
-    public const float Radius = 11, Speed = 510, OxygenMax = 100, Drain = .25f;
-    public const float NormalCost = 1, StrongCost = 2.5f, TankRecovery = 20;
-    public const int Columns = 14, Rows = 8;
-    public const float Tile = 64, Gap = 4, FieldX = 126, FieldY = 60;
-    public const float Step = 1f / 240;
-}
-
-public sealed class Ball
-{
-    public Vector2 Position { get; internal set; }
-    public Vector2 Velocity { get; internal set; }
-    public int Power { get; internal set; }
-}
-
-public sealed class Pickaxe
-{
-    public float X { get; internal set; } = Rules.Width / 2;
-    public bool Strong { get; internal set; }
-    public float Flash { get; internal set; }
-    public bool LastStrong { get; internal set; }
-    public float HalfWidth => Strong ? 36 : 88;
-}
-
-public sealed class Rock
-{
-    public int Column { get; init; }
-    public int Row { get; init; }
-    public bool Hard { get; init; }
-    public int Health { get; internal set; }
-    public bool Tank { get; internal set; }
-    public float X => Rules.FieldX + Column * (Rules.Tile + Rules.Gap);
-    public float Y => Rules.FieldY + Row * (Rules.Tile + Rules.Gap);
-}
-
 public sealed class GameSession
 {
     public GamePhase Phase { get; private set; } = GamePhase.Title;
@@ -72,15 +35,7 @@ public sealed class GameSession
         Pickaxe.X = Rules.Width / 2; Pickaxe.Strong = false; Pickaxe.Flash = 0;
         Ball.Power = 0; Ball.Velocity = Vector2.Zero;
         Rocks.Clear();
-        for (int row = 0; row < Rules.Rows; row++)
-        for (int col = 0; col < Rules.Columns; col++)
-        {
-            // 최상단은 반드시 돌. 나머지 행은 산소통 하나씩을 빈 칸에 배치합니다.
-            bool tank = row > 0 && col == (row * 5 + 2) % Rules.Columns;
-            bool hard = random.NextDouble() < .27;
-            Rocks.Add(new Rock { Row = row, Column = col, Hard = hard,
-                Health = tank ? 0 : hard ? 2 : 1, Tank = tank });
-        }
+        Rocks.AddRange(RockField.Create(random));
         Phase = GamePhase.Ready;
         AttachBall();
     }
@@ -144,25 +99,12 @@ public sealed class GameSession
         }
         else breathTimer = 0;
         Vector2 old = Ball.Position;
-        Ball.Position += Ball.Velocity * dt;
-        if (Ball.Position.X < Rules.Radius || Ball.Position.X > Rules.Width - Rules.Radius)
-        {
-            Ball.Position = new(Math.Clamp(Ball.Position.X, Rules.Radius, Rules.Width - Rules.Radius), Ball.Position.Y);
-            Ball.Velocity = new(-Ball.Velocity.X, Ball.Velocity.Y);
-            Sound?.Invoke(SoundCue.Bounce);
-        }
-        if (Ball.Position.Y < Rules.Radius || Ball.Position.Y > Rules.Floor - Rules.Radius)
-        {
-            Ball.Position = new(Ball.Position.X, Math.Clamp(Ball.Position.Y, Rules.Radius, Rules.Floor - Rules.Radius));
-            Ball.Velocity = new(Ball.Velocity.X, -Ball.Velocity.Y);
-            Sound?.Invoke(SoundCue.Bounce);
-        }
+        int bounces = BallPhysics.Move(Ball, dt);
+        for (int i = 0; i < bounces; i++) Sound?.Invoke(SoundCue.Bounce);
         foreach (Rock rock in Rocks)
         {
             if (rock.Health == 0 && !rock.Tank) continue;
-            float nearX = Math.Clamp(Ball.Position.X, rock.X, rock.X + Rules.Tile);
-            float nearY = Math.Clamp(Ball.Position.Y, rock.Y, rock.Y + Rules.Tile);
-            if (Vector2.DistanceSquared(Ball.Position, new(nearX, nearY)) > Rules.Radius * Rules.Radius) continue;
+            if (!BallPhysics.Overlaps(Ball, rock)) continue;
             if (rock.Tank)
             {
                 rock.Tank = false; Oxygen = Math.Min(Rules.OxygenMax, Oxygen + Rules.TankRecovery); breathTimer = 0;
@@ -177,23 +119,7 @@ public sealed class GameSession
                 if (rock.Row == 0) { Finish(true); return; }
             }
             if (Ball.Power > 0) continue;
-            // 240Hz 고정 step(이동 2.125px) + 진입 면 보정으로 관통/중복 접촉 방지.
-            if (old.Y >= rock.Y + Rules.Tile)
-            {
-                Ball.Position = new(Ball.Position.X, rock.Y + Rules.Tile + Rules.Radius + .1f);
-                Ball.Velocity = new(Ball.Velocity.X, Math.Abs(Ball.Velocity.Y));
-            }
-            else if (old.Y <= rock.Y)
-            {
-                Ball.Position = new(Ball.Position.X, rock.Y - Rules.Radius - .1f);
-                Ball.Velocity = new(Ball.Velocity.X, -Math.Abs(Ball.Velocity.Y));
-            }
-            else
-            {
-                bool left = old.X < rock.X + Rules.Tile / 2;
-                Ball.Position = new(left ? rock.X - Rules.Radius - .1f : rock.X + Rules.Tile + Rules.Radius + .1f, Ball.Position.Y);
-                Ball.Velocity = new(left ? -Math.Abs(Ball.Velocity.X) : Math.Abs(Ball.Velocity.X), Ball.Velocity.Y);
-            }
+            BallPhysics.Reflect(Ball, rock, old);
             Sound?.Invoke(SoundCue.Bounce);
             break;
         }
