@@ -19,7 +19,7 @@ class GameMain : G2AppBase
 
     protected override void Initialize()
     {
-        foreach (string name in new[] { "InplayBG", "Robby", "Stone_Tile", "HardStone_Tile", "pickaxe", "oxygen", "win", "Lose" })
+        foreach (string name in new[] { "InplayBG", "Robby", "Stone_Tile", "HardStone_Tile", "pickaxe", "Pickaxe_Strong", "oxygen", "win", "Lose" })
             textures.Add(name, new G2Texture($"resource/{name}.png"));
         text = new G2Font("Malgun Gothic", 24);
         small = new G2Font("Malgun Gothic", 18);
@@ -125,10 +125,10 @@ class GameMain : G2AppBase
         Outline(new Rect(p.X - p.HalfWidth, Rules.PaddleY - 64, p.HalfWidth * 2, 128),
             new Color4(color.R, color.G, color.B, p.Flash > 0 ? .9f : .3f), p.Flash > 0 ? 3 : 1);
         Matrix3x2 original = RenderTarget.Transform;
-        float rotation = strong ? -.75f : .75f;
+        float rotation = strong ? 0 : -MathF.PI / 4;
         if (p.Flash > 0) rotation += (p.Flash / .18f - .5f) * .8f;
         RenderTarget.Transform = Matrix3x2.CreateRotation(rotation, new(p.X, Rules.PaddleY)) * original;
-        Image("pickaxe", new Rect(p.X - 48, Rules.PaddleY - 48, 96, 96));
+        Image(strong ? "Pickaxe_Strong" : "pickaxe", new Rect(p.X - 48, Rules.PaddleY - 48 - (strong ? 20 : 0), 96, 96));
         RenderTarget.Transform = original;
         Fill(new Rect(p.X - p.HalfWidth, Rules.PaddleY + 30, p.HalfWidth * 2, 5), color);
     }

@@ -2,7 +2,7 @@ using EscapeMine;
 using Vortice.Multimedia;
 using Vortice.XAudio2;
 
-// 외부 음원 없이 재생 가능한 임시 합성 사운드. Cue별 Voice로 BGM과 효과음을 동시 재생합니다.
+// 실제 WAV Resource를 우선 재생하고 제공되지 않은 Cue는 합성 사운드로 보완합니다.
 sealed class GameAudio : IDisposable
 {
     private sealed class Clip : IDisposable
@@ -24,6 +24,8 @@ sealed class GameAudio : IDisposable
         public void Dispose() { Voice.Dispose(); Buffer.Dispose(); }
     }
     private readonly Dictionary<SoundCue, Clip> effects = new();
+    private readonly Dictionary<SoundCue, G2AudioSound> recordings = new();
+    private G2AudioSound? cave;
     private readonly Clip? title, mine;
     private GamePhase? phase;
     private bool muted;
@@ -35,6 +37,8 @@ sealed class GameAudio : IDisposable
         {
             muted = value; title?.Stop(); mine?.Stop();
             foreach (Clip clip in effects.Values) clip.Stop();
+            foreach (var clip in recordings.Values) clip.Stop();
+            cave?.Stop();
             phase = null;
         }
     }
@@ -62,18 +66,44 @@ sealed class GameAudio : IDisposable
         }, 0, .035));
         mine = new Clip(Synthesize(8, t => Math.Sin(2 * Math.PI * 55 * t) * .7 +
             Math.Sin(2 * Math.PI * 82.5 * t) * .3, .1, .025));
+        try
+        {
+            foreach (var (cue, file) in new[] {
+                (SoundCue.Swing, "sfx_swing.wav"), (SoundCue.StrongSwing, "sfx_swing_strong.wav"),
+                (SoundCue.Mode, "sfx_mode.wav"), (SoundCue.Break, "sfx_rock_break.wav"),
+                (SoundCue.Bounce, "sfx_bounce.wav"), (SoundCue.Oxygen, "sfx_oxygen.wav"),
+                (SoundCue.Breath, "sfx_breath.wav"), (SoundCue.Win, "sfx_cheer.wav") })
+                recordings.Add(cue, new G2AudioSound($"resource/sound/{file}"));
+            cave = new G2AudioSound("resource/sound/amb_cave.wav");
+        }
+        catch { Dispose(); throw; }
     }
 
-    public void Play(SoundCue cue) { if (!muted && effects.TryGetValue(cue, out Clip? clip)) clip.Play(); }
+    public void Play(SoundCue cue)
+    {
+        if (muted) return;
+        if (cue == SoundCue.Oxygen && recordings.TryGetValue(SoundCue.Breath, out var breath)) breath.Stop();
+        if (recordings.TryGetValue(cue, out var recording))
+        {
+            if (cue is SoundCue.Swing or SoundCue.StrongSwing or SoundCue.Mode || !recording.IsPlaying()) recording.Play();
+        }
+        else if (effects.TryGetValue(cue, out Clip? clip)) clip.Play();
+    }
     public void Update(GamePhase next)
     {
         if (phase == next) return;
-        title?.Stop(); mine?.Stop(); phase = next;
+        title?.Stop(); mine?.Stop(); cave?.Stop(); phase = next;
+        if (next != GamePhase.Play && recordings.TryGetValue(SoundCue.Breath, out var breath)) breath.Stop();
         if (muted) return;
         if (next is GamePhase.Title or GamePhase.Ready) title?.Play(true);
-        else if (next == GamePhase.Play) mine?.Play(true);
+        else if (next == GamePhase.Play) { if (cave != null) cave.Play(true); else mine?.Play(true); }
     }
-    public void Pause() { title?.Stop(); mine?.Stop(); phase = null; }
+    public void Pause()
+    {
+        title?.Stop(); mine?.Stop(); cave?.Stop(); phase = null;
+        foreach (var clip in recordings.Values) clip.Stop();
+        foreach (var clip in effects.Values) clip.Stop();
+    }
 
     private static byte[] Synthesize(double duration, Func<double, double> tone, double noise, double volume)
     {
@@ -94,6 +124,8 @@ sealed class GameAudio : IDisposable
     public void Dispose()
     {
         foreach (var effect in effects.Values) effect.Dispose();
+        foreach (var recording in recordings.Values) recording.Dispose();
+        cave?.Dispose();
         title?.Dispose(); mine?.Dispose();
     }
 }

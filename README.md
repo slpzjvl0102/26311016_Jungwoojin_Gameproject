@@ -55,8 +55,10 @@ Release 실행 파일은 `BrickOut/bin/Release/net9.0-windows7.0/BrickOut.exe`�
 - 최상단은 모두 돌, 아래 7개 행은 각 한 칸에 산소통, 돌은 약 27% 확률로 화강암입니다.
 - 공의 속도는 510px/초이며 Physics는 240Hz Fixed Step으로 처리합니다.
 - 이미지 원본은 변경하지 않았습니다. 공·산소 게이지·균열·타격 효과는 Direct2D로 그립니다.
-- 음원 파일이 없어 합성 효과음(Swing/Break/Bounce/Oxygen/Breath/Win/Lose)과 두 가지 반복 BGM을 사용합니다.
-  기획서의 실제 호흡·박수 녹음 음원과는 다릅니다. Audio 장치가 없으면 무음으로 동작합니다.
+- 원격 `sound` 커밋의 실제 WAV 효과음·광산 배경음과 강타 이미지를 통합했습니다.
+  일반/강타 스윙, 모드 전환, 돌 파괴, 반사, 산소, 호흡, 박수에 실제 음원을 사용하며,
+  타이틀 BGM과 패배 효과음은 합성 사운드입니다. 저산소 호흡은 5초 간격으로 재생합니다.
+  Audio 장치가 없으면 무음으로 동작합니다. 음원 출처는 `BrickOut/resource/sound/CREDITS.md`에 있습니다.
 - 5분 플레이 목표와 산소 수치는 사람의 플레이 테스트로 추가 조정해야 합니다.
 
 ## 코드 변경점
@@ -65,7 +67,7 @@ Release 실행 파일은 `BrickOut/bin/Release/net9.0-windows7.0/BrickOut.exe`�
 | --- | --- |
 | `BrickOut/GameSession.cs` | Rendering과 독립된 상태·산소·점수·필드 생성·충돌·승패 로직. Ball/Pickaxe/Rock/Rules 포함 |
 | `BrickOut/GameMain.cs` | 실제 Input을 게임에 전달하고 타이틀·필드·HUD·결과를 Rendering. Texture·Font·Brush 수명 관리 |
-| `BrickOut/GameAudio.cs` | 외부 음원 없이 합성 PCM 생성, Cue별 XAudio2 Voice, BGM 전환·음소거 |
+| `BrickOut/GameAudio.cs` | 실제 WAV 효과음·광산 BGM, 합성 타이틀 BGM·패배 효과음, BGM 전환·음소거 |
 | `BrickOut/GameGlobal.cs` | Window 제목을 Escape Mine으로 변경 |
 | `BrickOut/glc2d/G2AppBase.cs` | 포커스 확인과 화면 비율 유지·중앙 정렬 |
 | `BrickOut/glc2d/G2InputContext.cs` | Frame 사이의 짧은 입력 이벤트 보관, 포커스 상실 시 Reset, Letterbox 마우스 좌표 변환 |
@@ -74,6 +76,8 @@ Release 실행 파일은 `BrickOut/bin/Release/net9.0-windows7.0/BrickOut.exe`�
 | `tests/` | 게임 규칙과 전체 플레이 자동 검증용 독립 Console 프로젝트 |
 
 Framework의 기존 96 DPI 설정은 유지했습니다. 기존 그래픽 Resource 파일은 수정하지 않았습니다.
+원격에서 가져온 `Pickaxe.cs`, `OxygenBreathTimer.cs`와 `doc/InteractionDemo.md`는 이전 조작 데모의 기록입니다.
+현재 완성 게임은 `GameSession.cs`의 곡괭이·산소 상태를 사용하며 F1~F5 미리듣기 대신 실제 게임 이벤트에 사운드를 연결합니다.
 
 ## 검증
 

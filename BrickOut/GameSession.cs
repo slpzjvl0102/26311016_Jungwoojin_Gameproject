@@ -4,7 +4,7 @@ using System.Numerics;
 namespace EscapeMine;
 
 public enum GamePhase { Title, Ready, Play, Result }
-public enum SoundCue { Swing, Break, Bounce, Oxygen, Breath, Win, Lose }
+public enum SoundCue { Swing, StrongSwing, Mode, Break, Bounce, Oxygen, Breath, Win, Lose }
 public readonly record struct GameInput(float MouseX, bool Start = false, bool Swing = false,
     bool TogglePower = false, bool Restart = false);
 
@@ -97,7 +97,7 @@ public sealed class GameSession
             return;
         }
         Pickaxe.X = Math.Clamp(input.MouseX, 90, Rules.Width - 90);
-        if (input.TogglePower) Pickaxe.Strong = !Pickaxe.Strong;
+        if (input.TogglePower) { Pickaxe.Strong = !Pickaxe.Strong; Sound?.Invoke(SoundCue.Mode); }
         if (Phase == GamePhase.Ready) AttachBall();
         if (input.Swing) Swing();
         if (Phase != GamePhase.Play) return;
@@ -117,7 +117,7 @@ public sealed class GameSession
         float halfWidth = Pickaxe.HalfWidth;
         Pickaxe.LastStrong = strong; Pickaxe.Flash = .18f; Pickaxe.Strong = false;
         Oxygen = Math.Max(0, Oxygen - (strong ? Rules.StrongCost : Rules.NormalCost));
-        Sound?.Invoke(SoundCue.Swing);
+        Sound?.Invoke(strong ? SoundCue.StrongSwing : SoundCue.Swing);
         if (Oxygen <= 0) { Finish(false); return; }
         bool hit = Phase == GamePhase.Ready ||
             (Math.Abs(Ball.Position.X - Pickaxe.X) <= halfWidth + Rules.Radius &&
@@ -137,8 +137,12 @@ public sealed class GameSession
         Elapsed += dt;
         Oxygen = Math.Max(0, Oxygen - Rules.Drain * dt);
         if (Oxygen <= 0) { Finish(false); return; }
-        breathTimer -= dt;
-        if (Oxygen <= 20 && breathTimer <= 0) { Sound?.Invoke(SoundCue.Breath); breathTimer = 2; }
+        if (Oxygen <= 20)
+        {
+            breathTimer += dt;
+            if (breathTimer >= 5) { Sound?.Invoke(SoundCue.Breath); breathTimer = 0; }
+        }
+        else breathTimer = 0;
         Vector2 old = Ball.Position;
         Ball.Position += Ball.Velocity * dt;
         if (Ball.Position.X < Rules.Radius || Ball.Position.X > Rules.Width - Rules.Radius)
@@ -161,7 +165,7 @@ public sealed class GameSession
             if (Vector2.DistanceSquared(Ball.Position, new(nearX, nearY)) > Rules.Radius * Rules.Radius) continue;
             if (rock.Tank)
             {
-                rock.Tank = false; Oxygen = Math.Min(Rules.OxygenMax, Oxygen + Rules.TankRecovery);
+                rock.Tank = false; Oxygen = Math.Min(Rules.OxygenMax, Oxygen + Rules.TankRecovery); breathTimer = 0;
                 Sound?.Invoke(SoundCue.Oxygen); Notify("산소 회복 +20"); continue;
             }
             int damage = Math.Min(Ball.Power, rock.Health);
