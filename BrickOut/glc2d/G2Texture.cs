@@ -16,6 +16,7 @@ class G2Texture : IDisposable
 	private static readonly Dictionary<string, TextureData> TextureList = new();
 
 	public string FilePath { get; }
+	public Rect SourceBounds => new(0, 0, _textureData!.Bitmap.Size.Width, _textureData.Bitmap.Size.Height);
 
 	// 텍스처 데이터와 관련된 필드.
 	private TextureData? _textureData;

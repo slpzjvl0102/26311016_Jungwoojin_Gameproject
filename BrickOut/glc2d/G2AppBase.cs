@@ -17,6 +17,7 @@ abstract class G2AppBase : IDisposable
 	public ID2D1HwndRenderTarget RenderTarget => _graphics.RenderTarget;
 	public IDWriteFactory DWriteFactory => _graphics.DWriteFactory;
 	public G2InputContext Input => _inputContext;
+	public bool IsActive => _mainForm.ContainsFocus && _mainForm.WindowState != FormWindowState.Minimized;
 
 	public virtual System.Drawing.Size ScreenSize => new(640, 480);
 	public virtual string GameName => "G2 Game";
@@ -25,8 +26,11 @@ abstract class G2AppBase : IDisposable
 	public double DeltaTime { get; private set; }
 	public double TotalTime { get; private set; }
 
-	public float ScaleX => (float)_mainForm.ClientSize.Width / ScreenSize.Width;
-	public float ScaleY => (float)_mainForm.ClientSize.Height / ScreenSize.Height;
+	public float ScaleX => Math.Max(.001f, Math.Min((float)_mainForm.ClientSize.Width / ScreenSize.Width,
+		(float)_mainForm.ClientSize.Height / ScreenSize.Height));
+	public float ScaleY => ScaleX;
+	public float ViewportX => (_mainForm.ClientSize.Width - ScreenSize.Width * ScaleX) / 2;
+	public float ViewportY => (_mainForm.ClientSize.Height - ScreenSize.Height * ScaleY) / 2;
 
 	public static float ScreenScaleX => Instance?.ScaleX ?? throw new InvalidOperationException("ScreenScaleX::G2AppBase instance is not initialized.");
 	public static float ScreenScaleY => Instance?.ScaleY ?? throw new InvalidOperationException("ScreenScaleY::G2AppBase instance is not initialized.");
@@ -153,7 +157,8 @@ abstract class G2AppBase : IDisposable
 	private void Render2D()
 	{
 		ID2D1HwndRenderTarget renderTarget = _graphics.RenderTarget;
-		renderTarget.Transform = System.Numerics.Matrix3x2.CreateScale(ScreenScaleX, ScreenScaleY);
+		renderTarget.Transform = System.Numerics.Matrix3x2.CreateScale(ScreenScaleX, ScreenScaleY)
+			* System.Numerics.Matrix3x2.CreateTranslation(ViewportX, ViewportY);
 		renderTarget.BeginDraw();
 		renderTarget.Clear(ClearColor);
 

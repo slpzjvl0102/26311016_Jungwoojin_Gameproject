@@ -27,10 +27,15 @@ class G2InputContext : IDisposable
 	private readonly byte[] _keyCur = new byte[MaxInputKey];
 	private readonly byte[] _keyOld = new byte[MaxInputKey];
 	private readonly InputState[] _keyMap = new InputState[MaxInputKey];
+	private readonly Queue<InputState>[] _keyEvents = Enumerable.Range(0, MaxInputKey)
+		.Select(_ => new Queue<InputState>()).ToArray();
+	private readonly bool[] _keyHeld = new bool[MaxInputKey];
 
 	private readonly byte[] _buttonCur = new byte[MaxInputButton];
 	private readonly byte[] _buttonOld = new byte[MaxInputButton];
 	private readonly InputState[] _buttonMap = new InputState[MaxInputButton];
+	private readonly Queue<InputState>[] _buttonEvents = Enumerable.Range(0, MaxInputButton)
+		.Select(_ => new Queue<InputState>()).ToArray();
 
 	private readonly Form _targetForm;
 
@@ -63,6 +68,11 @@ class G2InputContext : IDisposable
 		}
 		_targetForm = form ?? throw new ArgumentNullException(nameof(form));
 		_targetForm.MouseWheel += OnMouseWheel;
+		_targetForm.MouseDown += OnMouseDown;
+		_targetForm.MouseUp += OnMouseUp;
+		_targetForm.Deactivate += OnDeactivate;
+		_targetForm.KeyDown += OnKeyDown;
+		_targetForm.KeyUp += OnKeyUp;
 		_mouseOldPosition = _mousePosition;
 		Instance = this;
 	}
@@ -85,6 +95,7 @@ class G2InputContext : IDisposable
 			{
 				_keyCur[i] = (_keyCur[i] & 0x80) != 0 ? (byte)1 : (byte)0;
 				_keyMap[i] = GetInputState(_keyOld[i], _keyCur[i]);
+				if (_keyEvents[i].TryDequeue(out InputState edge)) _keyMap[i] = edge;
 			}
 		}
 		else
@@ -96,16 +107,32 @@ class G2InputContext : IDisposable
 
 	private void UpdateMouseButton()
 	{
-		Array.Copy(_buttonCur, _buttonOld, MaxInputButton);
-		_buttonCur[0] = _keyCur[(int)Keys.LButton];
-		_buttonCur[1] = _keyCur[(int)Keys.RButton];
-		_buttonCur[2] = _keyCur[(int)Keys.MButton];
-		_buttonCur[3] = _keyCur[(int)Keys.XButton1];
-		_buttonCur[4] = _keyCur[(int)Keys.XButton2];
 		for (int i = 0; i < MaxInputButton; i++)
 		{
-			_buttonMap[i] = GetInputState(_buttonOld[i],_buttonCur[i]);
+			// 같은 Frame에 Down/Up이 도착해도 짧은 클릭을 놓치지 않도록 순서대로 처리합니다.
+			if (_buttonEvents[i].TryDequeue(out InputState edge))
+			{
+				_buttonMap[i] = edge;
+				_buttonCur[i] = edge == InputState.Down ? (byte)1 : (byte)0;
+			}
+			else _buttonMap[i] = _buttonCur[i] == 1 ? InputState.Press : InputState.None;
 		}
+	}
+
+	private void OnMouseDown(object? sender, MouseEventArgs e) => _buttonEvents[GetButtonIndex(e.Button)].Enqueue(InputState.Down);
+	private void OnMouseUp(object? sender, MouseEventArgs e) => _buttonEvents[GetButtonIndex(e.Button)].Enqueue(InputState.Up);
+	private void OnDeactivate(object? sender, EventArgs e) => Reset();
+	private void OnKeyDown(object? sender, KeyEventArgs e)
+	{
+		int index = GetKeyIndex(e.KeyCode);
+		if (!_keyHeld[index]) _keyEvents[index].Enqueue(InputState.Down);
+		_keyHeld[index] = true;
+	}
+	private void OnKeyUp(object? sender, KeyEventArgs e)
+	{
+		int index = GetKeyIndex(e.KeyCode);
+		_keyEvents[index].Enqueue(InputState.Up);
+		_keyHeld[index] = false;
 	}
 
 	private void UpdateMousePosition()
@@ -122,7 +149,8 @@ class G2InputContext : IDisposable
 		var scaleX = G2AppBase.ScreenScaleX;
 		var scaleY = G2AppBase.ScreenScaleY;
 
-		_mousePosition = new PointF(point.X / scaleX, point.Y / scaleY);
+		var app = G2AppBase.Instance!;
+		_mousePosition = new PointF((point.X - app.ViewportX) / scaleX, (point.Y - app.ViewportY) / scaleY);
 		_mouseDelta = new PointF(_mousePosition.X - _mouseOldPosition.X, _mousePosition.Y - _mouseOldPosition.Y);
 		_mouseOldPosition = _mousePosition;
 	}
@@ -194,9 +222,12 @@ class G2InputContext : IDisposable
 		Array.Clear(_keyCur, 0, MaxInputKey);
 		Array.Clear(_keyOld, 0, MaxInputKey);
 		Array.Clear(_keyMap, 0, MaxInputKey);
+		Array.Clear(_keyHeld);
+		foreach (var events in _keyEvents) events.Clear();
 		Array.Clear(_buttonCur, 0, MaxInputButton);
 		Array.Clear(_buttonOld, 0, MaxInputButton);
 		Array.Clear(_buttonMap, 0, MaxInputButton);
+		foreach (var events in _buttonEvents) events.Clear();
 		MouseWheelDelta = 0;
 		_wheelAccumulated = 0;
 		UpdateMousePosition();
@@ -225,6 +256,11 @@ class G2InputContext : IDisposable
 	public void Dispose()
 	{
 		_targetForm.MouseWheel -= OnMouseWheel;
+		_targetForm.MouseDown -= OnMouseDown;
+		_targetForm.MouseUp -= OnMouseUp;
+		_targetForm.Deactivate -= OnDeactivate;
+		_targetForm.KeyDown -= OnKeyDown;
+		_targetForm.KeyUp -= OnKeyUp;
 		Instance = null;
 	}
 }
